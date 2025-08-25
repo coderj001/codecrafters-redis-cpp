@@ -63,15 +63,29 @@ int main(int argc, char **argv) {
 
   if (bytes_received > 0) {
     std::string received_data(
-        buffer, bytes_received); // create a string from received data to make
-                                 // it easy to compare
+        buffer, bytes_received); // create a string from received data to make it easy to compare
 
-    if (received_data.find("PING") != std::string::npos) {
-      const char *resp = "+PONG\r\n";
-      write(client_fd, resp, strlen(resp));
-    } else {
-      write(client_fd, buffer, bytes_received);
+    std::string new_string_data;
+    for (size_t i = 0; i < received_data.length(); i++) {
+      if (received_data[i] == '\n') {
+        if (new_string_data.find("PING") != std::string::npos) {
+          const char *resp = "+PONG\r\n";
+          write(client_fd, resp, strlen(resp));
+          new_string_data = "";
+        } else {
+          write(client_fd, buffer, bytes_received);
+        }
+      } else {
+        new_string_data += received_data[i];
+      }
     }
+
+    // if (received_data.find("PING") != std::string::npos) {
+    //   const char *resp = "+PONG\r\n";
+    //   write(client_fd, resp, strlen(resp));
+    // } else {
+    //   write(client_fd, buffer, bytes_received);
+    // }
   }
 
   close(server_fd);
