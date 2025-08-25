@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -48,16 +49,30 @@ int main(int argc, char **argv) {
   struct sockaddr_in client_addr;
   int client_addr_len = sizeof(client_addr);
   std::cout << "Waiting for a client to connect...\n";
-
-  // You can use print statements as follows for debugging, they'll be visible
-  // when running tests.
   std::cout << "Logs from your program will appear here!\n";
 
-  // Uncomment this block to pass the first stage
-
-  accept(server_fd, (struct sockaddr *)&client_addr,
-         (socklen_t *)&client_addr_len);
+  int client_fd = accept(server_fd, (struct sockaddr *)&client_addr,
+                         (socklen_t *)&client_addr_len);
+  if (client_fd < 0) {
+    std::cerr << "Failed to accept client connection\n";
+  }
   std::cout << "Client connected\n";
+
+  char buffer[1024]; // hold data from client
+  ssize_t bytes_received = read(client_fd, buffer, sizeof(buffer));
+
+  if (bytes_received > 0) {
+    std::string received_data(
+        buffer, bytes_received); // create a string from received data to make
+                                 // it easy to compare
+
+    if (received_data.find("PING") != std::string::npos) {
+      const char *resp = "+PONG\r\n";
+      write(client_fd, resp, strlen(resp));
+    } else {
+      write(client_fd, buffer, bytes_received);
+    }
+  }
 
   close(server_fd);
 
