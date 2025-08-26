@@ -58,34 +58,23 @@ int main(int argc, char **argv) {
   }
   std::cout << "Client connected\n";
 
-  char buffer[1024]; // hold data from client
-  ssize_t bytes_received = read(client_fd, buffer, sizeof(buffer));
+  char buffer[1024] = {0}; // hold data from client
 
-  if (bytes_received > 0) {
-    std::string received_data(
-        buffer, bytes_received); // create a string from received data to make it easy to compare
+  while (true) {
+    ssize_t bytes_received = read(client_fd, buffer, sizeof(buffer));
 
-    std::string new_string_data;
-    for (size_t i = 0; i < received_data.length(); i++) {
-      if (received_data[i] == '\n') {
-        if (new_string_data.find("PING") != std::string::npos) {
-          const char *resp = "+PONG\r\n";
-          write(client_fd, resp, strlen(resp));
-          new_string_data = "";
-        } else {
-          write(client_fd, buffer, bytes_received);
-        }
-      } else {
-        new_string_data += received_data[i];
-      }
+    if (bytes_received < 0) {
+      std::cerr << "Failed to read\n";
     }
 
-    // if (received_data.find("PING") != std::string::npos) {
-    //   const char *resp = "+PONG\r\n";
-    //   write(client_fd, resp, strlen(resp));
-    // } else {
-    //   write(client_fd, buffer, bytes_received);
-    // }
+    std::string received_data(buffer, bytes_received);
+
+    if (received_data.find("PING") != std::string::npos) {
+      const char *resp = "+PONG\r\n";
+      write(client_fd, resp, strlen(resp));
+    } else if (received_data.find("END") != std::string::npos) {
+      break;
+    }
   }
 
   close(server_fd);
