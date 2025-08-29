@@ -3,12 +3,146 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <netdb.h>
+#include <sstream>
+#include <stdexcept>
 #include <string>
+#include <strstream>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <system_error>
 #include <thread>
 #include <unistd.h>
+#include <vector>
+
+class RESPDataType {
+public:
+  virtual ~RESPDataType() = default;
+  virtual void print() const = 0;
+};
+
+class SimpleStrings : public RESPDataType {
+public:
+  std::string value;
+  explicit SimpleStrings(const std::string &v) : value(v) {};
+  void print() const override { std::cout << "\"" << value << "\""; }
+};
+
+class BulkStrings : public RESPDataType {
+public:
+  std::string value;
+  explicit BulkStrings(const std::string &v) : value(v) {}
+  void print() const override { std::cout << "\"" << value << "\""; }
+};
+
+class Integers : public RESPDataType {
+public:
+  long long int integer;
+  explicit Integers(const long long int &v) : integer(v) {};
+  void print() const override { std::cout << "\"" << integer << "\""; }
+};
+
+class Arrays : public RESPDataType {
+public:
+  std::vector<std::shared_ptr<RESPDataType>> arrays;
+  void print() const {
+    std::cout << "[";
+    for (size_t i = 0; i < arrays.size(); i++) {
+      arrays[i]->print();
+      if (i < arrays.size() - 1) {
+        std::cout << ", ";
+      }
+    }
+    std::cout << "]";
+  }
+};
+
+class Errors : public RESPDataType {
+public:
+  std::string err;
+  explicit Errors(const std::string &err) : err(err) {};
+  void print() const override { std::cout << "\"" << err << "\""; }
+};
+
+enum TokenType { STRING, ARRAY_BEGIN, ARRAY_END };
+
+struct Token {
+  TokenType type;
+  std::string value;
+
+  Token(TokenType t, const std::string &v) : type(t), value(v) {}
+};
+
+std::vector<Token> tokenizer(const std::string &input) {
+  std::vector<Token> tokens;
+  size_t pos = 0;
+
+  while (pos < input.length()) {
+    char c = input[pos];
+    switch (c) {
+    case '+':
+      size_t p = input.find("\r\n");
+      std::string str = input.substr(pos + 1, p - (pos + 1));
+      tokens.emplace_back(TokenType::STRING, str);
+      pos = pos + str.length() + 2;
+      break;
+    case '*':
+      p++;
+      size_t num_of_items = input[pos];
+      p++;
+      tokens.emplace_back(TokenType::ARRAY_BEGIN, "[");
+      for (size_t i = 0; i < num_of_items; i++) {
+        std::string str = input.substr(pos, input.find("\r\n"));
+        tokens.emplace_back(TokenType::STRING, str);
+        pos = pos + str.length() + 2;
+      }
+      tokens.emplace_back(TokenType::ARRAY_END, "]");
+      break;
+    }
+  }
+
+  return tokens;
+};
+
+class RESPParser {
+public:
+  explicit RESPParser(const std::string &string)
+      : tokens(tokenizer(string)), pos(0) {};
+
+  std::shared_ptr<RESPDataType> parser() {
+    if (pos >= tokens.size()) {
+      throw std::runtime_error("Empty Input");
+    }
+    return parserValue();
+  }
+
+private:
+  std::vector<Token> tokens;
+  size_t pos;
+
+  bool hasMore() { return pos < tokens.size(); }
+
+  Token &nextToken() {
+    if (!hasMore()) {
+      throw std::runtime_error("Unexpected end of input");
+    }
+    return tokens[pos++];
+  }
+
+  std::shared_ptr<RESPDataType> parserValue() {
+    Token &tok = nextToken();
+    switch (tok.type) {
+    case STRING:
+      return std::make_shared<SimpleStrings>(tok.value);
+    case ARRAY_BEGIN:
+
+    default:
+
+      throw std::runtime_error("Unsupported token");
+    }
+  }
+};
 
 void handle_client(int client_fd) {
   std::cout << "Client connected on thread " << std::this_thread::get_id()
