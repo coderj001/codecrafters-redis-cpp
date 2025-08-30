@@ -1,0 +1,41 @@
+Detecting compiler hash for triplet x64-linux...
+Compiler found: /usr/bin/c++
+The following packages will be rebuilt:
+    asio:x64-linux@1.30.2 -- git+https://github.com/microsoft/vcpkg@17ce1a2d17d0cb0d50eb72c89a9e51f472ef31f4
+    pthreads:x64-linux@3.0.0#14 -- git+https://github.com/microsoft/vcpkg@2e0a6df2800d3677b941dc6504f083965b7886d9
+  * vcpkg-cmake:x64-linux@2023-05-04 -- git+https://github.com/microsoft/vcpkg@88a7058fc7fa73a9c4c99cfcae9d79e2abf87a5a
+  * vcpkg-cmake-config:x64-linux@2022-02-06#1 -- git+https://github.com/microsoft/vcpkg@8d54cc4f487d51b655abec5f9c9c3f86ca83311f
+Additional packages (*) will be modified to complete this operation.
+Restored 4 package(s) from /home/mrzero/.cache/vcpkg/archives in 90.2 ms. Use --debug to see more details.
+Removing 1/8 pthreads:x64-linux
+Elapsed time to handle pthreads:x64-linux: 1.23 ms
+Removing 2/8 asio:x64-linux
+Elapsed time to handle asio:x64-linux: 26.6 ms
+Removing 3/8 vcpkg-cmake:x64-linux
+Elapsed time to handle vcpkg-cmake:x64-linux: 697 us
+Removing 4/8 vcpkg-cmake-config:x64-linux
+Elapsed time to handle vcpkg-cmake-config:x64-linux: 680 us
+Installing 5/8 vcpkg-cmake-config:x64-linux@2022-02-06#1...
+Elapsed time to handle vcpkg-cmake-config:x64-linux: 588 us
+vcpkg-cmake-config:x64-linux package ABI: d02715df9a04b7fb96824a5d6028031131b7fc247100de3e674dad7f534e133e
+Installing 6/8 vcpkg-cmake:x64-linux@2023-05-04...
+Elapsed time to handle vcpkg-cmake:x64-linux: 552 us
+vcpkg-cmake:x64-linux package ABI: e43d110d7eef8935392cee46400894c41b1abc08434ddc6908136dfb276d6e18
+Installing 7/8 asio:x64-linux@1.30.2...
+Elapsed time to handle asio:x64-linux: 20 ms
+asio:x64-linux package ABI: aa1183341498cf4d05ab25c97fd2c9486f6ea129c55d4819ca439e93ebd1aa94
+Installing 8/8 pthreads:x64-linux@3.0.0#14...
+Elapsed time to handle pthreads:x64-linux: 769 us
+pthreads:x64-linux package ABI: eaf516e699c61b4b48e238b21daffbe9ba9183b8ca7413a7dc58de7d2531e0df
+Installed contents are licensed to you by owners. Microsoft is not responsible for, nor does it grant any licenses to, third-party packages.
+Packages installed in this vcpkg installation declare the following licenses:
+Apache-2.0
+BSL-1.0
+MIT
+asio provides CMake targets:
+
+  # this is heuristically generated, and may not be correct
+  find_package(asio CONFIG REQUIRED)
+  target_link_libraries(main PRIVATE asio::asio)
+
+All requested installations completed successfully in: 52.1 ms

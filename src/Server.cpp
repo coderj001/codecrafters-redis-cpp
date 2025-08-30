@@ -22,6 +22,18 @@ public:
   virtual void print() const = 0;
 };
 
+class Null : public RESPDataType {
+public:
+  void print() const override { std::cout << "null"; }
+};
+
+class Boolean : public RESPDataType {
+public:
+  bool value;
+  explicit Boolean(bool v) : value(v) {};
+  void print() const override { std::cout << (value ? "true" : "false"); }
+};
+
 class SimpleStrings : public RESPDataType {
 public:
   std::string value;
@@ -43,14 +55,21 @@ public:
   void print() const override { std::cout << "\"" << integer << "\""; }
 };
 
+class Doubles : public RESPDataType {
+public:
+  double d;
+  explicit Doubles(const double &v) : d(v) {};
+  void print() const override { std::cout << "\"" << d << "\""; }
+};
+
 class Arrays : public RESPDataType {
 public:
-  std::vector<std::shared_ptr<RESPDataType>> arrays;
+  std::vector<std::shared_ptr<RESPDataType>> values;
   void print() const {
     std::cout << "[";
-    for (size_t i = 0; i < arrays.size(); i++) {
-      arrays[i]->print();
-      if (i < arrays.size() - 1) {
+    for (size_t i = 0; i < values.size(); i++) {
+      values[i]->print();
+      if (i < values.size() - 1) {
         std::cout << ", ";
       }
     }
@@ -65,7 +84,16 @@ public:
   void print() const override { std::cout << "\"" << err << "\""; }
 };
 
-enum TokenType { STRING, ARRAY_BEGIN, ARRAY_END };
+enum TokenType {
+  STRING,
+  INTEGER,
+  DOUBLE,
+  BULKSTRING,
+  ERROR,
+  NULLs,
+  ARRAY_BEGIN,
+  ARRAY_END
+};
 
 struct Token {
   TokenType type;
@@ -81,24 +109,42 @@ std::vector<Token> tokenizer(const std::string &input) {
   while (pos < input.length()) {
     char c = input[pos];
     switch (c) {
-    case '+':
+    case '+': {
       size_t p = input.find("\r\n");
       std::string str = input.substr(pos + 1, p - (pos + 1));
       tokens.emplace_back(TokenType::STRING, str);
       pos = pos + str.length() + 2;
       break;
-    case '*':
-      p++;
+    }
+    case '-': {
+      // handle error token
+      break;
+    }
+    case ':': {
+      break;
+    }
+    case ',': {
+      break;
+    }
+    case '_': {
+      break;
+    }
+    case '#': {
+      break;
+    }
+    case '*': {
+      size_t p = pos + 1; // re-declare safely inside this case
       size_t num_of_items = input[pos];
       p++;
       tokens.emplace_back(TokenType::ARRAY_BEGIN, "[");
       for (size_t i = 0; i < num_of_items; i++) {
-        std::string str = input.substr(pos, input.find("\r\n"));
+        std::string str = input.substr(pos, input.find("\r\n") - pos);
         tokens.emplace_back(TokenType::STRING, str);
         pos = pos + str.length() + 2;
       }
       tokens.emplace_back(TokenType::ARRAY_END, "]");
       break;
+    }
     }
   }
 
@@ -130,13 +176,33 @@ private:
     return tokens[pos++];
   }
 
+  Token &currentToken() {
+    if (!hasMore()) {
+      throw std::runtime_error("Unexpected end of input");
+    }
+    return tokens[pos];
+  }
+
+  std::shared_ptr<Arrays> parseArray() {
+    auto array = std::make_shared<Arrays>();
+
+    if (currentToken().type != TokenType::ARRAY_BEGIN) {
+      throw std::runtime_error("Expected '[' at start of array");
+    }
+    nextToken();
+    while (hasMore() && currentToken().type != TokenType::ARRAY_END) {
+      array->values.emplace_back(parserValue());
+    }
+    return array;
+  }
+
   std::shared_ptr<RESPDataType> parserValue() {
     Token &tok = nextToken();
     switch (tok.type) {
     case STRING:
       return std::make_shared<SimpleStrings>(tok.value);
     case ARRAY_BEGIN:
-
+      return parseArray();
     default:
 
       throw std::runtime_error("Unsupported token");
@@ -162,6 +228,9 @@ void handle_client(int client_fd) {
     if (received_data.find("PING") != std::string::npos) {
       const char *resp = "+PONG\r\n";
       write(client_fd, resp, strlen(resp));
+    } else if (received_data.find("ECHO") != std::string::npos) {
+      std::string resp = received_data.substr(received_data.find("ECHO") + 4);
+      write(client_fd, resp.c_str(), resp.length());
     } else if (received_data.find("END") != std::string::npos) {
       break;
     }
