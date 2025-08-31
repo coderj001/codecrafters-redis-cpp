@@ -168,10 +168,13 @@ std::vector<Token> tokenizer(const std::string &input) {
       pos = end + 2;
 
       tokens.emplace_back(TokenType::ARRAY_BEGIN, std::to_string(num));
+
       for (int i = 0; i < num; i++) {
-        // let loop naturally pick up nested tokens
-        // so we don't parse items here
+        size_t oldPos = pos;
+        auto subTokens = tokenizer(input.substr(pos));
+        tokens.push_back(subTokens.front());
       }
+
       tokens.emplace_back(TokenType::ARRAY_END, "]");
       break;
     }
