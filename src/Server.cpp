@@ -1,301 +1,88 @@
+#include "./include/resp_parser.h"
+#include <algorithm>
 #include <arpa/inet.h>
-#include <cstddef>
-#include <cstdlib>
-#include <cstring>
 #include <iostream>
-#include <memory>
-#include <netdb.h>
-#include <sstream>
-#include <stdexcept>
-#include <string>
-#include <strstream>
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <system_error>
 #include <thread>
 #include <unistd.h>
-#include <vector>
+#include <unordered_map>
 
-class RESPDataType {
-public:
-  virtual ~RESPDataType() = default;
-  virtual void print() const = 0;
-};
+std::unordered_map<std::string, std::string> store;
 
-class Null : public RESPDataType {
-public:
-  void print() const override { std::cout << "null"; }
-};
+void handleCommand(const std::vector<std::string> &parts, int client_fd) {
+  if (parts.empty())
+    return;
 
-class Boolean : public RESPDataType {
-public:
-  bool value;
-  explicit Boolean(bool v) : value(v) {};
-  void print() const override { std::cout << (value ? "true" : "false"); }
-};
+  std::string cmd = parts[0];
+  std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::toupper);
 
-class SimpleStrings : public RESPDataType {
-public:
-  std::string value;
-  explicit SimpleStrings(const std::string &v) : value(v) {};
-  void print() const override { std::cout << "\"" << value << "\""; }
-};
+  if (cmd == "SET" && parts.size() >= 3) {
+    const std::string &key = parts[1];
+    const std::string &value = parts[2];
+    store[key] = value;
+    std::string resp = encodeSimpleString("OK");
+    send(client_fd, resp.c_str(), resp.size(), 0);
 
-class BulkStrings : public RESPDataType {
-public:
-  std::string value;
-  explicit BulkStrings(const std::string &v) : value(v) {}
-  void print() const override { std::cout << "\"" << value << "\""; }
-};
-
-class Integers : public RESPDataType {
-public:
-  long long int integer;
-  explicit Integers(const long long int &v) : integer(v) {};
-  void print() const override { std::cout << "\"" << integer << "\""; }
-};
-
-class Doubles : public RESPDataType {
-public:
-  double d;
-  explicit Doubles(const double &v) : d(v) {};
-  void print() const override { std::cout << "\"" << d << "\""; }
-};
-
-class Arrays : public RESPDataType {
-public:
-  std::vector<std::shared_ptr<RESPDataType>> values;
-  void print() const {
-    std::cout << "[";
-    for (size_t i = 0; i < values.size(); i++) {
-      values[i]->print();
-      if (i < values.size() - 1) {
-        std::cout << ", ";
-      }
+  } else if (cmd == "GET" && parts.size() >= 2) {
+    const std::string &key = parts[1];
+    auto it = store.find(key);
+    if (it != store.end()) {
+      std::string resp = encodeBulkString(it->second);
+      send(client_fd, resp.c_str(), resp.size(), 0);
+    } else {
+      std::string resp = encodeNullBulkString();
+      send(client_fd, resp.c_str(), resp.size(), 0);
     }
-    std::cout << "]";
+
+  } else {
+    std::string resp = "-ERR unknown command\r\n";
+    send(client_fd, resp.c_str(), resp.size(), 0);
   }
-};
-
-class Errors : public RESPDataType {
-public:
-  std::string err;
-  explicit Errors(const std::string &err) : err(err) {};
-  void print() const override { std::cout << "\"" << err << "\""; }
-};
-
-enum TokenType {
-  STRING,
-  INTEGER,
-  DOUBLE,
-  BULKSTRING,
-  ERROR,
-  NULLs,
-  ARRAY_BEGIN,
-  ARRAY_END
-};
-
-struct Token {
-  TokenType type;
-  std::string value;
-
-  Token(TokenType t, const std::string &v) : type(t), value(v) {}
-};
-
-std::vector<Token> tokenizer(const std::string &input) {
-  std::vector<Token> tokens;
-  size_t pos = 0;
-
-  while (pos < input.size()) {
-    char c = input[pos];
-    switch (c) {
-    case '+': { // Simple String
-      size_t end = input.find("\r\n", pos);
-      std::string str = input.substr(pos + 1, end - (pos + 1));
-      tokens.emplace_back(TokenType::STRING, str);
-      pos = end + 2;
-      break;
-    }
-    case '-': { // Error
-      size_t end = input.find("\r\n", pos);
-      std::string str = input.substr(pos + 1, end - (pos + 1));
-      tokens.emplace_back(TokenType::ERROR, str);
-      pos = end + 2;
-      break;
-    }
-    case ':': { // Integer
-      size_t end = input.find("\r\n", pos);
-      std::string num = input.substr(pos + 1, end - (pos + 1));
-      tokens.emplace_back(TokenType::INTEGER, num);
-      pos = end + 2;
-      break;
-    }
-    case ',': { // Double
-      size_t end = input.find("\r\n", pos);
-      std::string num = input.substr(pos + 1, end - (pos + 1));
-      tokens.emplace_back(TokenType::DOUBLE, num);
-      pos = end + 2;
-      break;
-    }
-    case '_': { // Null
-      tokens.emplace_back(TokenType::NULLs, "");
-      pos += 3; // "_\r\n"
-      break;
-    }
-    case '#': { // Boolean
-      char val = input[pos + 1];
-      tokens.emplace_back(TokenType::STRING, val == 't' ? "true" : "false");
-      pos += 3; // "#t\r\n" or "#f\r\n"
-      break;
-    }
-    case '$': { // Bulk String
-      size_t end = input.find("\r\n", pos);
-      int len = std::stoi(input.substr(pos + 1, end - (pos + 1)));
-      pos = end + 2;
-
-      if (len == -1) {
-        tokens.emplace_back(TokenType::BULKSTRING, ""); // Null Bulk String
-      } else {
-        std::string str = input.substr(pos, len);
-        tokens.emplace_back(TokenType::BULKSTRING, str);
-        pos += len + 2; // skip string + \r\n
-      }
-      break;
-    }
-    case '*': { // Array
-      size_t end = input.find("\r\n", pos);
-      int num = std::stoi(input.substr(pos + 1, end - (pos + 1)));
-      pos = end + 2;
-      tokens.emplace_back(TokenType::ARRAY_BEGIN, std::to_string(num));
-      break; // no ARRAY_END here
-    }
-    default:
-      throw std::runtime_error(std::string("Invalid RESP type: ") + c);
-    }
-  }
-  return tokens;
 }
 
-class RESPParser {
-public:
-  explicit RESPParser(const std::string &string)
-      : tokens(tokenizer(string)), pos(0) {};
-
-  std::shared_ptr<RESPDataType> parser() {
-    if (pos >= tokens.size()) {
-      throw std::runtime_error("Empty Input");
-    }
-    return parserValue();
-  }
-
-private:
-  std::vector<Token> tokens;
-  size_t pos;
-
-  bool hasMore() { return pos < tokens.size(); }
-
-  Token &nextToken() {
-    if (!hasMore()) {
-      throw std::runtime_error("Unexpected end of input");
-    }
-    return tokens[pos++];
-  }
-
-  Token &currentToken() {
-    if (!hasMore()) {
-      throw std::runtime_error("Unexpected end of input");
-    }
-    return tokens[pos];
-  }
-
-  std::shared_ptr<Arrays> parseArray() {
-    auto array = std::make_shared<Arrays>();
-
-    Token &begin = nextToken();
-    if (begin.type != TokenType::ARRAY_BEGIN) {
-      throw std::runtime_error("Expected ARRAY_BEGIN");
-    }
-
-    int num = std::stoi(begin.value);
-    for (int i = 0; i < num; i++) {
-      array->values.emplace_back(parserValue());
-    }
-    return array;
-  }
-
-  std::shared_ptr<RESPDataType> parserValue() {
-    Token &tok = nextToken();
-    switch (tok.type) {
-    case STRING:
-      return std::make_shared<SimpleStrings>(tok.value);
-    case BULKSTRING:
-      return std::make_shared<BulkStrings>(tok.value);
-    case INTEGER:
-      return std::make_shared<Integers>(std::stoll(tok.value));
-    case DOUBLE:
-      return std::make_shared<Doubles>(std::stod(tok.value));
-    case ERROR:
-      return std::make_shared<Errors>(tok.value);
-    case NULLs:
-      return std::make_shared<Null>();
-    case ARRAY_BEGIN:
-      pos--; // step back so parseArray() sees it
-      return parseArray();
-    default:
-      throw std::runtime_error("Unsupported token in parserValue");
-    }
-  }
-};
-
-std::string encodeBulkString(const std::string &s) {
-  return "$" + std::to_string(s.size()) + "\r\n" + s + "\r\n";
-}
-
-void handle_client(int client_fd) {
+void handleClient(int client_fd) {
   std::cout << "Client connected on thread " << std::this_thread::get_id()
             << std::endl;
-  ;
-  char buffer[1024] = {0}; // hold data from client
+
+  char buffer[1024];
+  std::string input;
 
   while (true) {
     ssize_t bytes_received = read(client_fd, buffer, sizeof(buffer));
-
-    if (bytes_received < 0) {
-      std::cerr << "Failed to read\n";
+    if (bytes_received <= 0) {
+      if (bytes_received < 0) {
+        std::cerr << "Failed to read\n";
+      }
+      break;
     }
 
-    std::string received_data(buffer, bytes_received);
+    input.append(buffer, bytes_received);
 
-    if (received_data.find("PING") != std::string::npos) {
-      const char *resp = "+PONG\r\n";
-      write(client_fd, resp, strlen(resp));
-    } else if (received_data.find("ECHO") == 0) {
-      std::string arg = received_data.substr(5);
-      if (!arg.empty() && arg.back() == '\n')
-        arg.pop_back();
-      if (!arg.empty() && arg.back() == '\r')
-        arg.pop_back();
-
-      std::string resp =
-          "$" + std::to_string(arg.size()) + "\r\n" + arg + "\r\n";
-
-      write(client_fd, resp.c_str(), resp.size());
-    } else {
-      RESPParser parser(received_data);
-
+    while (!input.empty()) {
+      RESPParser parser(input);
       auto root = parser.parser();
-      auto arr = std::dynamic_pointer_cast<Arrays>(root);
-
-      std::string cmd =
-          std::dynamic_pointer_cast<BulkStrings>(arr->values[0])->value;
-      if (cmd == "ECHO") {
-        std::string message =
-            std::dynamic_pointer_cast<BulkStrings>(arr->values[1])->value;
-        std::string response = encodeBulkString(message);
-        send(client_fd, response.c_str(), response.size(), 0);
-
-        // write(client_fd, resp.c_str(), resp.length());
+      if (!root) {
+        break;
       }
+
+      auto arr = std::dynamic_pointer_cast<Arrays>(root);
+      if (!arr) {
+        std::cerr << "Expected RESP Array\n";
+        break;
+      }
+
+      std::vector<std::string> parts;
+      for (auto &val : arr->values) {
+        auto bulk = std::dynamic_pointer_cast<BulkStrings>(val);
+        if (bulk) {
+          parts.push_back(bulk->value);
+        }
+      }
+
+      handleCommand(parts, client_fd);
+
+      input.erase(0, parser.bytesConsumed());
     }
   }
 
@@ -312,8 +99,6 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  // Since the tester restarts your program quite often, setting SO_REUSEADDR
-  // ensures that we don't run into 'Address already in use' errors
   int reuse = 1;
   if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) <
       0) {
@@ -338,7 +123,6 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  // Main loop that accept connection
   while (true) {
     struct sockaddr_in client_addr;
     int client_addr_len = sizeof(client_addr);
@@ -349,12 +133,10 @@ int main(int argc, char **argv) {
       std::cerr << "Failed to accept client connection\n";
     }
 
-    std::thread client_thread(handle_client,
-                              client_fd); // create a new thread
-    client_thread.detach();               // let's it run independently
+    std::thread client_thread(handleClient, client_fd);
+    client_thread.detach();
   }
 
   close(server_fd);
-
   return 0;
 }
