@@ -166,17 +166,8 @@ std::vector<Token> tokenizer(const std::string &input) {
       size_t end = input.find("\r\n", pos);
       int num = std::stoi(input.substr(pos + 1, end - (pos + 1)));
       pos = end + 2;
-
       tokens.emplace_back(TokenType::ARRAY_BEGIN, std::to_string(num));
-
-      for (int i = 0; i < num; i++) {
-        size_t oldPos = pos;
-        auto subTokens = tokenizer(input.substr(pos));
-        tokens.push_back(subTokens.front());
-      }
-
-      tokens.emplace_back(TokenType::ARRAY_END, "]");
-      break;
+      break; // no ARRAY_END here
     }
     default:
       throw std::runtime_error(std::string("Invalid RESP type: ") + c);
@@ -221,15 +212,13 @@ private:
     auto array = std::make_shared<Arrays>();
 
     Token &begin = nextToken();
-    if (currentToken().type != TokenType::ARRAY_BEGIN) {
+    if (begin.type != TokenType::ARRAY_BEGIN) {
       throw std::runtime_error("Expected ARRAY_BEGIN");
     }
-    while (hasMore() && currentToken().type != TokenType::ARRAY_END) {
-      array->values.emplace_back(parserValue());
-    }
 
-    if (hasMore() && currentToken().type == TokenType::ARRAY_END) {
-      nextToken();
+    int num = std::stoi(begin.value);
+    for (int i = 0; i < num; i++) {
+      array->values.emplace_back(parserValue());
     }
     return array;
   }
