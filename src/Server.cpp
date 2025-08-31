@@ -106,50 +106,81 @@ std::vector<Token> tokenizer(const std::string &input) {
   std::vector<Token> tokens;
   size_t pos = 0;
 
-  while (pos < input.length()) {
+  while (pos < input.size()) {
     char c = input[pos];
     switch (c) {
-    case '+': {
-      size_t p = input.find("\r\n");
-      std::string str = input.substr(pos + 1, p - (pos + 1));
+    case '+': { // Simple String
+      size_t end = input.find("\r\n", pos);
+      std::string str = input.substr(pos + 1, end - (pos + 1));
       tokens.emplace_back(TokenType::STRING, str);
-      pos = pos + str.length() + 2;
+      pos = end + 2;
       break;
     }
-    case '-': {
-      // handle error token
+    case '-': { // Error
+      size_t end = input.find("\r\n", pos);
+      std::string str = input.substr(pos + 1, end - (pos + 1));
+      tokens.emplace_back(TokenType::ERROR, str);
+      pos = end + 2;
       break;
     }
-    case ':': {
+    case ':': { // Integer
+      size_t end = input.find("\r\n", pos);
+      std::string num = input.substr(pos + 1, end - (pos + 1));
+      tokens.emplace_back(TokenType::INTEGER, num);
+      pos = end + 2;
       break;
     }
-    case ',': {
+    case ',': { // Double
+      size_t end = input.find("\r\n", pos);
+      std::string num = input.substr(pos + 1, end - (pos + 1));
+      tokens.emplace_back(TokenType::DOUBLE, num);
+      pos = end + 2;
       break;
     }
-    case '_': {
+    case '_': { // Null
+      tokens.emplace_back(TokenType::NULLs, "");
+      pos += 3; // "_\r\n"
       break;
     }
-    case '#': {
+    case '#': { // Boolean
+      char val = input[pos + 1];
+      tokens.emplace_back(TokenType::STRING, val == 't' ? "true" : "false");
+      pos += 3; // "#t\r\n" or "#f\r\n"
       break;
     }
-    case '*': {
-      size_t p = pos + 1; // re-declare safely inside this case
-      size_t num_of_items = input[pos];
-      p++;
-      tokens.emplace_back(TokenType::ARRAY_BEGIN, "[");
-      for (size_t i = 0; i < num_of_items; i++) {
-        std::string str = input.substr(pos, input.find("\r\n") - pos);
-        tokens.emplace_back(TokenType::STRING, str);
-        pos = pos + str.length() + 2;
+    case '$': { // Bulk String
+      size_t end = input.find("\r\n", pos);
+      int len = std::stoi(input.substr(pos + 1, end - (pos + 1)));
+      pos = end + 2;
+
+      if (len == -1) {
+        tokens.emplace_back(TokenType::BULKSTRING, ""); // Null Bulk String
+      } else {
+        std::string str = input.substr(pos, len);
+        tokens.emplace_back(TokenType::BULKSTRING, str);
+        pos += len + 2; // skip string + \r\n
+      }
+      break;
+    }
+    case '*': { // Array
+      size_t end = input.find("\r\n", pos);
+      int num = std::stoi(input.substr(pos + 1, end - (pos + 1)));
+      pos = end + 2;
+
+      tokens.emplace_back(TokenType::ARRAY_BEGIN, std::to_string(num));
+      for (int i = 0; i < num; i++) {
+        // let loop naturally pick up nested tokens
+        // so we don't parse items here
       }
       tokens.emplace_back(TokenType::ARRAY_END, "]");
       break;
     }
+    default:
+      throw std::runtime_error(std::string("Invalid RESP type: ") + c);
     }
   }
-
   return tokens;
-};
+}
 
 class RESPParser {
 public:
@@ -186,12 +217,16 @@ private:
   std::shared_ptr<Arrays> parseArray() {
     auto array = std::make_shared<Arrays>();
 
+    Token &begin = nextToken();
     if (currentToken().type != TokenType::ARRAY_BEGIN) {
-      throw std::runtime_error("Expected '[' at start of array");
+      throw std::runtime_error("Expected ARRAY_BEGIN");
     }
-    nextToken();
     while (hasMore() && currentToken().type != TokenType::ARRAY_END) {
       array->values.emplace_back(parserValue());
+    }
+
+    if (hasMore() && currentToken().type == TokenType::ARRAY_END) {
+      nextToken();
     }
     return array;
   }
@@ -201,11 +236,21 @@ private:
     switch (tok.type) {
     case STRING:
       return std::make_shared<SimpleStrings>(tok.value);
+    case BULKSTRING:
+      return std::make_shared<BulkStrings>(tok.value);
+    case INTEGER:
+      return std::make_shared<Integers>(std::stoll(tok.value));
+    case DOUBLE:
+      return std::make_shared<Doubles>(std::stod(tok.value));
+    case ERROR:
+      return std::make_shared<Errors>(tok.value);
+    case NULLs:
+      return std::make_shared<Null>();
     case ARRAY_BEGIN:
+      pos--; // step back so parseArray() sees it
       return parseArray();
     default:
-
-      throw std::runtime_error("Unsupported token");
+      throw std::runtime_error("Unsupported token in parserValue");
     }
   }
 };
@@ -228,11 +273,31 @@ void handle_client(int client_fd) {
     if (received_data.find("PING") != std::string::npos) {
       const char *resp = "+PONG\r\n";
       write(client_fd, resp, strlen(resp));
-    } else if (received_data.find("ECHO") != std::string::npos) {
-      std::string resp = received_data.substr(received_data.find("ECHO") + 4);
-      write(client_fd, resp.c_str(), resp.length());
-    } else if (received_data.find("END") != std::string::npos) {
-      break;
+    } else if (received_data.find("ECHO") == 0) {
+      std::string arg = received_data.substr(5);
+      if (!arg.empty() && arg.back() == '\n')
+        arg.pop_back();
+      if (!arg.empty() && arg.back() == '\r')
+        arg.pop_back();
+
+      std::string resp =
+          "$" + std::to_string(arg.size()) + "\r\n" + arg + "\r\n";
+
+      write(client_fd, resp.c_str(), resp.size());
+    } else {
+      RESPParser parser(received_data);
+
+      auto root = parser.parser();
+      auto arr = std::dynamic_pointer_cast<Arrays>(root);
+
+      std::string cmd =
+          std::dynamic_pointer_cast<BulkStrings>(arr->values[0])->value;
+      if (cmd == "ECHO") {
+        std::string resp =
+            std::dynamic_pointer_cast<BulkStrings>(arr->values[1])->value;
+
+        write(client_fd, resp.c_str(), resp.length());
+      }
     }
   }
 
@@ -275,19 +340,6 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  // struct sockaddr_in client_addr;
-  // int client_addr_len = sizeof(client_addr);
-  // std::cout << "Waiting for a client to connect...\n";
-  // std::cout << "Logs from your program will appear here!\n";
-  //
-  // int client_fd = accept(server_fd, (struct sockaddr *)&client_addr,
-  //                        (socklen_t *)&client_addr_len);
-  // if (client_fd < 0) {
-  //   std::cerr << "Failed to accept client connection\n";
-  // }
-  //
-  // handle_client(client_fd);
-
   // Main loop that accept connection
   while (true) {
     struct sockaddr_in client_addr;
@@ -299,8 +351,9 @@ int main(int argc, char **argv) {
       std::cerr << "Failed to accept client connection\n";
     }
 
-    std::thread client_thread(handle_client, client_fd); // create a new thread
-    client_thread.detach(); // let's it run independently
+    std::thread client_thread(handle_client,
+                              client_fd); // create a new thread
+    client_thread.detach();               // let's it run independently
   }
 
   close(server_fd);
