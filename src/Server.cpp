@@ -247,6 +247,10 @@ private:
   }
 };
 
+std::string encodeBulkString(const std::string &s) {
+  return "$" + std::to_string(s.size()) + "\r\n" + s + "\r\n";
+}
+
 void handle_client(int client_fd) {
   std::cout << "Client connected on thread " << std::this_thread::get_id()
             << std::endl;
@@ -285,10 +289,12 @@ void handle_client(int client_fd) {
       std::string cmd =
           std::dynamic_pointer_cast<BulkStrings>(arr->values[0])->value;
       if (cmd == "ECHO") {
-        std::string resp =
+        std::string message =
             std::dynamic_pointer_cast<BulkStrings>(arr->values[1])->value;
+        std::string response = encodeBulkString(message);
+        send(client_fd, response.c_str(), response.size(), 0);
 
-        write(client_fd, resp.c_str(), resp.length());
+        // write(client_fd, resp.c_str(), resp.length());
       }
     }
   }
