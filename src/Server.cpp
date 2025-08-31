@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <arpa/inet.h>
 #include <iostream>
+#include <iterator>
+#include <ostream>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <thread>
