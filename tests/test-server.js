@@ -1,5 +1,6 @@
 const { spawn } = require('child_process');
 const path = require('path');
+const net = require('net');
 const redis = require('redis');
 
 class RedisServerTester {
@@ -9,68 +10,109 @@ class RedisServerTester {
   }
 
   async startServer() {
-    const serverPath = path.join(__dirname, '..', 'your_program.sh');
-    
-    return new Promise((resolve, reject) => {
-      this.serverProcess = spawn('bash', [serverPath], {
-        cwd: path.dirname(serverPath),
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
+    // Spawn the built server binary directly (avoid relying on your_program.sh output)
+    const serverBinary = path.join(__dirname, '..', 'build', 'server');
 
-      let started = false;
-      const timeout = setTimeout(() => {
-        if (!started) {
-          reject(new Error('Server failed to start within 10 seconds'));
-        }
-      }, 10000);
+    return new Promise((resolve, reject) => {
+      try {
+        this.serverProcess = spawn(serverBinary, [], {
+          cwd: path.dirname(serverBinary),
+          stdio: ['ignore', 'pipe', 'pipe']
+        });
+      } catch (err) {
+        return reject(err);
+      }
 
       this.serverProcess.stdout.on('data', (data) => {
-        const output = data.toString();
-        console.log('Server stdout:', output);
-        if (output.includes('Server started') || output.includes('listening')) {
-          started = true;
-          clearTimeout(timeout);
-          // Wait a bit more for server to be ready
-          setTimeout(resolve, 1000);
-        }
+        console.log('Server stdout:', data.toString());
       });
 
       this.serverProcess.stderr.on('data', (data) => {
-        console.log('Server stderr:', data.toString());
+        console.error('Server stderr:', data.toString());
       });
 
       this.serverProcess.on('error', (err) => {
-        clearTimeout(timeout);
         reject(err);
       });
+
+      // Wait for TCP port 6379 to accept connections
+      const start = Date.now();
+      const timeoutMs = 10000; // 10s timeout
+
+      const tryConnect = () => {
+        const socket = net.createConnection({ host: '127.0.0.1', port: 6379 }, () => {
+          socket.end();
+          // give server a tiny moment to settle
+          setTimeout(resolve, 100);
+        });
+
+        socket.on('error', (err) => {
+          socket.destroy();
+          if (Date.now() - start >= timeoutMs) {
+            reject(new Error('Server did not accept connections on port 6379 within timeout'));
+          } else {
+            setTimeout(tryConnect, 150);
+          }
+        });
+      };
+
+      tryConnect();
     });
   }
 
   async connectClient() {
-    this.client = redis.createClient({
-      host: 'localhost',
-      port: 6379,
-      retry_strategy: (options) => {
-        if (options.error && options.error.code === 'ECONNREFUSED') {
-          console.log('Connection refused, retrying...');
-          return Math.min(options.attempt * 100, 3000);
-        }
-        return false;
-      }
-    });
+    // Use redis client to run tests; createClient syntax varies between redis versions,
+    // so first try modern API, fall back to legacy options if needed.
+    try {
+      // Modern (v4+) API
+      this.client = redis.createClient({ socket: { host: '127.0.0.1', port: 6379 } });
+    } catch (err) {
+      // Fallback for older redis clients
+      this.client = redis.createClient({ host: '127.0.0.1', port: 6379 });
+    }
 
     return new Promise((resolve, reject) => {
-      this.client.on('connect', () => {
-        console.log('Connected to Redis server');
-        resolve();
-      });
-
-      this.client.on('error', (err) => {
-        console.log('Redis client error:', err.message);
+      // redis >=4 uses connect() promise, but also emits events; use both defensively.
+      const onError = (err) => {
+        cleanupListeners();
         reject(err);
-      });
+      };
 
-      this.client.connect();
+      const onConnect = () => {
+        cleanupListeners();
+        resolve();
+      };
+
+      const cleanupListeners = () => {
+        if (this.client && this.client.off) {
+          this.client.off('error', onError);
+          this.client.off('connect', onConnect);
+        }
+      };
+
+      if (this.client.on) {
+        this.client.on('error', onError);
+        this.client.on('connect', onConnect);
+      }
+
+      // Attempt to connect; for redis@4 this returns a promise
+      try {
+        const maybePromise = this.client.connect();
+        if (maybePromise && typeof maybePromise.then === 'function') {
+          maybePromise.then(() => {
+            // connect() resolved — ensure events cleaned
+            cleanupListeners();
+            resolve();
+          }).catch(onError);
+        }
+      } catch (err) {
+        // some clients throw synchronously; handle via events instead
+      }
+
+      // As a safety, set a timeout
+      setTimeout(() => {
+        reject(new Error('Client failed to connect within 10s'));
+      }, 10000);
     });
   }
 
@@ -126,16 +168,28 @@ class RedisServerTester {
 
   async cleanup() {
     if (this.client) {
-      await this.client.quit();
+      try {
+        if (this.client.quit) {
+          await this.client.quit();
+        } else if (this.client.disconnect) {
+          await this.client.disconnect();
+        }
+      } catch (err) {
+        // ignore errors during cleanup
+      }
     }
 
     if (this.serverProcess) {
-      this.serverProcess.kill('SIGTERM');
+      try {
+        this.serverProcess.kill('SIGTERM');
+      } catch (err) {
+        // ignore
+      }
       
       // Wait for process to exit
       await new Promise((resolve) => {
         this.serverProcess.on('exit', resolve);
-        setTimeout(resolve, 5000); // Force kill after 5 seconds
+        setTimeout(resolve, 5000); // Force continue after 5 seconds
       });
     }
   }
