@@ -132,6 +132,32 @@ class RedisCliTester {
     }
   }
 
+  async testPingEcho() {
+    try {
+      console.log('Testing PING and ECHO...');
+
+      const pingRes = await this.runRedisCliCommand(['PING']);
+      // redis-cli prints PONG
+      if (pingRes.trim() !== 'PONG') {
+        console.log('✗ PING test failed, got:', pingRes);
+        return false;
+      }
+
+      const echoMsg = 'hello-redis-cli';
+      const echoRes = await this.runRedisCliCommand(['ECHO', echoMsg]);
+      if (echoRes.trim() !== echoMsg) {
+        console.log('✗ ECHO test failed, got:', echoRes);
+        return false;
+      }
+
+      console.log('✓ PING/ECHO tests passed');
+      return true;
+    } catch (err) {
+      console.log('✗ PING/ECHO test failed:', err.message);
+      return false;
+    }
+  }
+
   async testErrorHandling() {
     try {
       console.log('Testing error handling...');
@@ -170,6 +196,7 @@ class RedisCliTester {
     results.push(await this.testOverwriteValue());
     results.push(await this.testMultipleKeys());
     results.push(await this.testErrorHandling());
+  results.push(await this.testPingEcho());
 
     return results.every(result => result);
   }

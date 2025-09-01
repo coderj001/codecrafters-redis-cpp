@@ -58,8 +58,9 @@ void handleCommand(const std::vector<std::string> &parts, int client_fd) {
       send(client_fd, resp.c_str(), resp.size(), 0);
     }
   } else if (cmd == "PING") {
-    std::string resp = encodeBulkString("PONG");
-    send(client_fd, resp.c_str(), resp.size(), 0);
+  // Redis returns PONG as a simple string for PING.
+  std::string resp = encodeSimpleString("PONG");
+  send(client_fd, resp.c_str(), resp.size(), 0);
   } else {
     std::string resp = "-ERR unknown command '" + parts[0] + "'\r\n";
     send(client_fd, resp.c_str(), resp.size(), 0);
