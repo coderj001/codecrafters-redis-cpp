@@ -7,44 +7,45 @@ std::vector<Token> tokenizer(const std::string &input) {
   size_t pos = 0;
 
   while (pos < input.size()) {
+    size_t start = pos;
     char c = input[pos];
     switch (c) {
     case '+': { // Simple String
       size_t end = input.find("\r\n", pos);
       std::string str = input.substr(pos + 1, end - (pos + 1));
-      tokens.emplace_back(TokenType::STRING, str);
+      tokens.emplace_back(TokenType::STRING, str, end - start + 2);
       pos = end + 2;
       break;
     }
     case '-': { // Error
       size_t end = input.find("\r\n", pos);
       std::string str = input.substr(pos + 1, end - (pos + 1));
-      tokens.emplace_back(TokenType::ERROR, str);
+      tokens.emplace_back(TokenType::ERROR, str, end - start + 2);
       pos = end + 2;
       break;
     }
     case ':': { // Integer
       size_t end = input.find("\r\n", pos);
       std::string num = input.substr(pos + 1, end - (pos + 1));
-      tokens.emplace_back(TokenType::INTEGER, num);
+      tokens.emplace_back(TokenType::INTEGER, num, end - start + 2);
       pos = end + 2;
       break;
     }
     case ',': { // Double
       size_t end = input.find("\r\n", pos);
       std::string num = input.substr(pos + 1, end - (pos + 1));
-      tokens.emplace_back(TokenType::DOUBLE, num);
+      tokens.emplace_back(TokenType::DOUBLE, num, end - start + 2);
       pos = end + 2;
       break;
     }
     case '_': { // Null
-      tokens.emplace_back(TokenType::NULLs, "");
+      tokens.emplace_back(TokenType::NULLs, "", 3);
       pos += 3; // "_\r\n"
       break;
     }
     case '#': { // Boolean
       char val = input[pos + 1];
-      tokens.emplace_back(TokenType::STRING, val == 't' ? "true" : "false");
+      tokens.emplace_back(TokenType::STRING, val == 't' ? "true" : "false", 3);
       pos += 3; // "#t\r\n" or "#f\r\n"
       break;
     }
@@ -52,21 +53,24 @@ std::vector<Token> tokenizer(const std::string &input) {
       size_t end = input.find("\r\n", pos);
       int len = std::stoi(input.substr(pos + 1, end - (pos + 1)));
       pos = end + 2;
-
-      if (input.size() < pos + len + 2 ||
-          input.substr(pos + len, 2) != "\r\n") {
-        throw std::runtime_error("Bulk string length mismatch");
+      if (len == -1) {
+        tokens.emplace_back(TokenType::NULLs, "", end - start + 2);
+      } else {
+        if (input.size() < pos + len + 2 ||
+            input.substr(pos + len, 2) != "\r\n") {
+          throw std::runtime_error("Bulk string length mismatch");
+        }
+        std::string str = input.substr(pos, len);
+        tokens.emplace_back(TokenType::BULKSTRING, str, end - start + 2 + len + 2);
+        pos += len + 2;
       }
-      std::string str = input.substr(pos, len);
-      tokens.emplace_back(TokenType::BULKSTRING, str);
-      pos += len + 2;
       break;
     }
     case '*': { // Array
       size_t end = input.find("\r\n", pos);
       int num = std::stoi(input.substr(pos + 1, end - (pos + 1)));
       pos = end + 2;
-      tokens.emplace_back(TokenType::ARRAY_BEGIN, std::to_string(num));
+      tokens.emplace_back(TokenType::ARRAY_BEGIN, std::to_string(num), end - start + 2);
       break;
     }
     default:
@@ -86,7 +90,15 @@ std::shared_ptr<RESPDataType> RESPParser::parser() {
   return parserValue();
 }
 
-size_t RESPParser::bytesConsumed() const { return pos; }
+size_t RESPParser::bytesConsumed() const { return getConsumedBytes(); }
+
+size_t RESPParser::getConsumedBytes() const {
+  size_t b = 0;
+  for (size_t i = 0; i < pos; ++i) {
+    b += tokens[i].length;
+  }
+  return b;
+}
 
 bool RESPParser::hasMore() { return pos < tokens.size(); }
 

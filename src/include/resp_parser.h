@@ -18,8 +18,9 @@ enum TokenType {
 struct Token {
   TokenType type;
   std::string value;
+  size_t length;
 
-  Token(TokenType t, const std::string &v) : type(t), value(v) {}
+  Token(TokenType t, const std::string &v, size_t l) : type(t), value(v), length(l) {}
 };
 
 std::vector<Token> tokenizer(const std::string &input);
@@ -39,6 +40,7 @@ private:
   Token &currentToken();
   std::shared_ptr<Arrays> parseArray();
   std::shared_ptr<RESPDataType> parserValue();
+  size_t getConsumedBytes() const;
 };
 
 std::string encodeSimpleString(const std::string &s);
