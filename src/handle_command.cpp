@@ -2,9 +2,11 @@
 #include "include/resp_parser.h"
 
 #include <algorithm>
+#include <mutex>
 #include <sys/socket.h>
 
 std::unordered_map<std::string, std::string> store;
+std::mutex store_mutex;
 
 void handleCommand(const std::vector<std::string> &parts, int client_fd) {
   if (parts.empty())
@@ -20,6 +22,8 @@ void handleCommand(const std::vector<std::string> &parts, int client_fd) {
     } else {
       const std::string &key = parts[1];
       const std::string &value = parts[2];
+      // Lock the store before writing
+      std::lock_guard<std::mutex> lock(store_mutex);
       store[key] = value;
       std::string resp = encodeSimpleString("OK");
       send(client_fd, resp.c_str(), resp.size(), 0);
@@ -30,12 +34,17 @@ void handleCommand(const std::vector<std::string> &parts, int client_fd) {
       send(client_fd, resp.c_str(), resp.size(), 0);
     } else {
       const std::string &key = parts[1];
+      std::string resp;
+
+      // Lock the store before writing
+      std::lock_guard<std::mutex> lock(store_mutex);
+
       auto it = store.find(key);
       if (it != store.end()) {
-        std::string resp = encodeBulkString(it->second);
+        resp = encodeBulkString(it->second);
         send(client_fd, resp.c_str(), resp.size(), 0);
       } else {
-        std::string resp = encodeNullBulkString();
+        resp = encodeNullBulkString();
         send(client_fd, resp.c_str(), resp.size(), 0);
       }
     }
