@@ -1,4 +1,4 @@
-const RedisServerTester = require('./test-server');
+const RedisServerTester = require('./test-server.js');
 
 let tester;
 

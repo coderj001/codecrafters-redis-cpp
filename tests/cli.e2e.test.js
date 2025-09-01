@@ -1,4 +1,4 @@
-const RedisCliTester = require('./test-redis-cli');
+const RedisCliTester = require('./test-redis-cli.js');
 
 jest.setTimeout(30000);
 
