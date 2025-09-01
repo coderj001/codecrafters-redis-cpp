@@ -1,0 +1,19 @@
+{
+  "name": "redis-server-e2e-tests",
+  "version": "1.0.0",
+  "description": "End-to-end tests for Redis server using JavaScript and redis-cli",
+  "main": "test-server.js",
+  "scripts": {
+    "test": "node test-server.js",
+    "test:cli": "node test-redis-cli.js",
+    "test:all": "npm run test && npm run test:cli",
+    "test:watch": "nodemon --exec \"npm run test:all\"",
+    "check-cli": "which redis-cli || echo 'redis-cli not found. Please install Redis CLI.'"
+  },
+  "dependencies": {
+    "redis": "^5.8.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}

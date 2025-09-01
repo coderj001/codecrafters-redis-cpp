@@ -1,0 +1,21 @@
+{
+  "name": "codecrafters-redis-cpp",
+  "version": "1.0.0",
+  "description": "Redis server implementation in C++",
+  "main": "build/server",
+  "scripts": {
+    "build": "cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake && cmake --build ./build",
+    "start": "./your_program.sh",
+    "test": "node test-runner.js",
+    "test:quick": "./quick-test.sh",
+    "test:e2e": "./run-e2e-tests.sh"
+  },
+  "keywords": [
+    "redis",
+    "server",
+    "cpp",
+    "codecrafters"
+  ],
+  "author": "",
+  "license": "MIT"
+}
