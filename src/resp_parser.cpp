@@ -61,7 +61,8 @@ std::vector<Token> tokenizer(const std::string &input) {
           throw std::runtime_error("Bulk string length mismatch");
         }
         std::string str = input.substr(pos, len);
-        tokens.emplace_back(TokenType::BULKSTRING, str, end - start + 2 + len + 2);
+        tokens.emplace_back(TokenType::BULKSTRING, str,
+                            end - start + 2 + len + 2);
         pos += len + 2;
       }
       break;
@@ -70,7 +71,8 @@ std::vector<Token> tokenizer(const std::string &input) {
       size_t end = input.find("\r\n", pos);
       int num = std::stoi(input.substr(pos + 1, end - (pos + 1)));
       pos = end + 2;
-      tokens.emplace_back(TokenType::ARRAY_BEGIN, std::to_string(num), end - start + 2);
+      tokens.emplace_back(TokenType::ARRAY_BEGIN, std::to_string(num),
+                          end - start + 2);
       break;
     }
     default:
