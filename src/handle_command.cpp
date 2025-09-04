@@ -1,11 +1,11 @@
-#include "./include/handle_command.h"
+#include "include/handle_command.h"
 #include "include/resp_parser.h"
 
 #include <algorithm>
 #include <mutex>
 #include <sys/socket.h>
 
-std::unordered_map<std::string, std::string> store;
+std::unordered_map<std::string, StoreValue> store;
 std::mutex store_mutex;
 
 void handleCommand(const std::vector<std::string> &parts, int client_fd) {
@@ -22,11 +22,32 @@ void handleCommand(const std::vector<std::string> &parts, int client_fd) {
     } else {
       const std::string &key = parts[1];
       const std::string &value = parts[2];
-      // Lock the store before writing
-      std::lock_guard<std::mutex> lock(store_mutex);
-      store[key] = value;
-      std::string resp = encodeSimpleString("OK");
-      send(client_fd, resp.c_str(), resp.size(), 0);
+
+      StoreValue store_value;
+      store_value.value = value;
+
+      if (parts.size() == 5) {
+        std::string px_arg = parts[3];
+        if (px_arg == "PX") {
+          try {
+            long long ms = std::stoll(parts[4]);
+            store_value.has_expiry = true;
+            store_value.expiry_time = std::chrono::steady_clock::now() +
+                                      std::chrono::milliseconds(ms);
+          } catch (const std::exception &e) {
+            // ... handle invalid milliseconds value ...
+            return;
+          }
+        }
+
+        // Lock the store before writing
+        {
+          std::lock_guard<std::mutex> lock(store_mutex);
+          store[key] = store_value;
+        }
+        std::string resp = encodeSimpleString("OK");
+        send(client_fd, resp.c_str(), resp.size(), 0);
+      }
     }
   } else if (cmd == "GET") {
     if (parts.size() < 2) {
@@ -41,12 +62,21 @@ void handleCommand(const std::vector<std::string> &parts, int client_fd) {
 
       auto it = store.find(key);
       if (it != store.end()) {
-        resp = encodeBulkString(it->second);
-        send(client_fd, resp.c_str(), resp.size(), 0);
+        // Key exists, now check for expiry
+        StoreValue &store_value = it->second;
+
+        if (store_value.has_expiry &&
+            std::chrono::steady_clock::now() > store_value.expiry_time) {
+          store.erase(it);
+          resp = encodeNullBulkString();
+        } else {
+
+          resp = encodeBulkString(store_value.value);
+        }
       } else {
         resp = encodeNullBulkString();
-        send(client_fd, resp.c_str(), resp.size(), 0);
       }
+      send(client_fd, resp.c_str(), resp.size(), 0);
     }
   } else if (cmd == "ECHO") {
     if (parts.size() < 2) {
@@ -58,9 +88,9 @@ void handleCommand(const std::vector<std::string> &parts, int client_fd) {
       send(client_fd, resp.c_str(), resp.size(), 0);
     }
   } else if (cmd == "PING") {
-  // Redis returns PONG as a simple string for PING.
-  std::string resp = encodeSimpleString("PONG");
-  send(client_fd, resp.c_str(), resp.size(), 0);
+    // Redis returns PONG as a simple string for PING.
+    std::string resp = encodeSimpleString("PONG");
+    send(client_fd, resp.c_str(), resp.size(), 0);
   } else {
     std::string resp = "-ERR unknown command '" + parts[0] + "'\r\n";
     send(client_fd, resp.c_str(), resp.size(), 0);

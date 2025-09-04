@@ -1,6 +1,7 @@
 #pragma once
 
 #include "./resp_datatypes.h"
+
 #include <string>
 #include <vector>
 
@@ -20,7 +21,8 @@ struct Token {
   std::string value;
   size_t length;
 
-  Token(TokenType t, const std::string &v, size_t l) : type(t), value(v), length(l) {}
+  Token(TokenType t, const std::string &v, size_t l)
+      : type(t), value(v), length(l) {}
 };
 
 std::vector<Token> tokenizer(const std::string &input);

@@ -1,6 +1,8 @@
 #include "./include/handle_command.h"
 #include "./include/resp_parser.h"
+
 #include <arpa/inet.h>
+#include <cstdlib>
 #include <iostream>
 #include <ostream>
 #include <sys/socket.h>
@@ -105,5 +107,5 @@ int main(int argc, char **argv) {
   }
 
   close(server_fd);
-  return 0;
+  return EXIT_SUCCESS;
 }
