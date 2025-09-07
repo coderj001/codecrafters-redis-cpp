@@ -14,11 +14,11 @@ void handleCommand(const std::vector<std::string> &parts, int client_fd) {
 
   std::string cmd = parts[0];
   std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::toupper);
+  std::string resp;
 
   if (cmd == "SET") {
     if (parts.size() < 3) {
-      std::string resp = "-ERR wrong number of arguments for 'set' command\r\n";
-      send(client_fd, resp.c_str(), resp.size(), 0);
+      resp = "-ERR wrong number of arguments for 'set' command\r\n";
     } else {
       const std::string &key = parts[1];
       const std::string &value = parts[2];
@@ -26,36 +26,40 @@ void handleCommand(const std::vector<std::string> &parts, int client_fd) {
       StoreValue store_value;
       store_value.value = value;
 
-      if (parts.size() == 5) {
+      if (parts.size() > 3 && parts.size() < 5) {
         std::string px_arg = parts[3];
+        std::transform(px_arg.begin(), px_arg.end(), px_arg.begin(), ::toupper);
         if (px_arg == "PX") {
           try {
             long long ms = std::stoll(parts[4]);
-            store_value.has_expiry = true;
+            //  PX expiry test failed (key still exists)
+            store_value.has_expiry = true; // fix time issue
             store_value.expiry_time = std::chrono::steady_clock::now() +
                                       std::chrono::milliseconds(ms);
           } catch (const std::exception &e) {
-            // ... handle invalid milliseconds value ...
+            std::cerr << "Expiry time value out of range: " << e.what()
+                      << std::endl;
+            store_value.has_expiry = false;
             return;
           }
         }
-
-        // Lock the store before writing
-        {
-          std::lock_guard<std::mutex> lock(store_mutex);
-          store[key] = store_value;
-        }
-        std::string resp = encodeSimpleString("OK");
-        send(client_fd, resp.c_str(), resp.size(), 0);
       }
+
+      // Lock the store before writing
+      {
+        std::lock_guard<std::mutex> lock(store_mutex);
+        store[key] = store_value;
+      }
+
+      resp = encodeSimpleString("OK");
     }
+    send(client_fd, resp.c_str(), resp.size(), 0);
   } else if (cmd == "GET") {
     if (parts.size() < 2) {
-      std::string resp = "-ERR wrong number of arguments for 'get' command\r\n";
+      resp = "-ERR wrong number of arguments for 'get' command\r\n";
       send(client_fd, resp.c_str(), resp.size(), 0);
     } else {
       const std::string &key = parts[1];
-      std::string resp;
 
       // Lock the store before writing
       std::lock_guard<std::mutex> lock(store_mutex);
@@ -64,9 +68,9 @@ void handleCommand(const std::vector<std::string> &parts, int client_fd) {
       if (it != store.end()) {
         // Key exists, now check for expiry
         StoreValue &store_value = it->second;
-
-        if (store_value.has_expiry &&
-            std::chrono::steady_clock::now() > store_value.expiry_time) {
+        
+        
+        if (store_value.is_expired()) {
           store.erase(it);
           resp = encodeNullBulkString();
         } else {
@@ -76,23 +80,21 @@ void handleCommand(const std::vector<std::string> &parts, int client_fd) {
       } else {
         resp = encodeNullBulkString();
       }
-      send(client_fd, resp.c_str(), resp.size(), 0);
     }
+    send(client_fd, resp.c_str(), resp.size(), 0);
   } else if (cmd == "ECHO") {
     if (parts.size() < 2) {
-      std::string resp =
-          "-ERR wrong number of arguments for 'echo' command\r\n";
-      send(client_fd, resp.c_str(), resp.size(), 0);
+      resp = "-ERR wrong number of arguments for 'echo' command\r\n";
     } else {
       std::string resp = encodeBulkString(parts[1]);
-      send(client_fd, resp.c_str(), resp.size(), 0);
     }
+    send(client_fd, resp.c_str(), resp.size(), 0);
   } else if (cmd == "PING") {
     // Redis returns PONG as a simple string for PING.
-    std::string resp = encodeSimpleString("PONG");
+    resp = encodeSimpleString("PONG");
     send(client_fd, resp.c_str(), resp.size(), 0);
   } else {
-    std::string resp = "-ERR unknown command '" + parts[0] + "'\r\n";
+    resp = "-ERR unknown command '" + parts[0] + "'\r\n";
     send(client_fd, resp.c_str(), resp.size(), 0);
   }
 }

@@ -22,6 +22,11 @@ test("GET non-existent returns null", async () => {
   expect(ok).toBe(true);
 });
 
+test("SET/GET Test with PX", async () => {
+  const ok = await tester.testSetWithPX();
+  expect(ok).toBe(true);
+});
+
 test("PING returns PONG", async () => {
   const res = await tester.client.ping();
   expect(res === "PONG" || res === undefined).toBe(true);
