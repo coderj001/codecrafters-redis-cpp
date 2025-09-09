@@ -26,7 +26,7 @@ void handleCommand(const std::vector<std::string> &parts, int client_fd) {
       StoreValue store_value;
       store_value.value = value;
 
-      if (parts.size() > 3 && parts.size() < 5) {
+      if (parts.size() > 3) {
         std::string px_arg = parts[3];
         std::transform(px_arg.begin(), px_arg.end(), px_arg.begin(), ::toupper);
         if (px_arg == "PX") {
@@ -68,8 +68,7 @@ void handleCommand(const std::vector<std::string> &parts, int client_fd) {
       if (it != store.end()) {
         // Key exists, now check for expiry
         StoreValue &store_value = it->second;
-        
-        
+
         if (store_value.is_expired()) {
           store.erase(it);
           resp = encodeNullBulkString();
