@@ -165,3 +165,7 @@ std::string encodeBulkString(const std::string &s) {
 }
 
 std::string encodeNullBulkString() { return "$-1\r\n"; }
+
+std::string encodeErrorString(const std::string &err) {
+  return "-" + err + "\r\n";
+}

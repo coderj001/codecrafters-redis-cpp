@@ -48,3 +48,4 @@ private:
 std::string encodeSimpleString(const std::string &s);
 std::string encodeBulkString(const std::string &s);
 std::string encodeNullBulkString();
+std::string encodeErrorString(const std::string &err);

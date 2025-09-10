@@ -18,7 +18,8 @@ void handleCommand(const std::vector<std::string> &parts, int client_fd) {
 
   if (cmd == "SET") {
     if (parts.size() < 3) {
-      resp = "-ERR wrong number of arguments for 'set' command\r\n";
+      resp =
+          encodeErrorString("ERR wrong number of arguments for 'set' command");
     } else {
       const std::string &key = parts[1];
       const std::string &value = parts[2];
@@ -56,7 +57,8 @@ void handleCommand(const std::vector<std::string> &parts, int client_fd) {
     send(client_fd, resp.c_str(), resp.size(), 0);
   } else if (cmd == "GET") {
     if (parts.size() < 2) {
-      resp = "-ERR wrong number of arguments for 'get' command\r\n";
+      resp =
+          encodeErrorString("ERR wrong number of arguments for 'get' command");
       send(client_fd, resp.c_str(), resp.size(), 0);
     } else {
       const std::string &key = parts[1];
@@ -83,9 +85,10 @@ void handleCommand(const std::vector<std::string> &parts, int client_fd) {
     send(client_fd, resp.c_str(), resp.size(), 0);
   } else if (cmd == "ECHO") {
     if (parts.size() < 2) {
-      resp = "-ERR wrong number of arguments for 'echo' command\r\n";
+      resp =
+          encodeErrorString("ERR wrong number of arguments for 'echo' command");
     } else {
-      std::string resp = encodeBulkString(parts[1]);
+      resp = encodeBulkString(parts[1]);
     }
     send(client_fd, resp.c_str(), resp.size(), 0);
   } else if (cmd == "PING") {
