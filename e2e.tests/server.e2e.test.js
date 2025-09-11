@@ -13,8 +13,10 @@ afterAll(async () => {
 });
 
 test("SET/GET works", async () => {
+  console.time("SET/GET works");
   const ok = await tester.testSetGet();
   expect(ok).toBe(true);
+  console.timeEnd("SET/GET works");
 });
 
 test("GET non-existent returns null", async () => {

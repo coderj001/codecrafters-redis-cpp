@@ -226,49 +226,10 @@ class RedisServerTester {
     }
 
     if (this.serverProcess) {
-      try {
-        // remove listeners on stdio so they don't keep the event loop alive
-        try {
-          if (this.serverProcess.stdout)
-            this.serverProcess.stdout.removeAllListeners();
-        } catch (e) {}
-        try {
-          if (this.serverProcess.stderr)
-            this.serverProcess.stderr.removeAllListeners();
-        } catch (e) {}
-
-        // Try graceful shutdown
-        this.serverProcess.kill("SIGTERM");
-
-        // Wait up to 5s for exit, then force kill
-        const exited = await new Promise((resolve) => {
-          let finished = false;
-          const onExit = () => {
-            if (!finished) {
-              finished = true;
-              resolve(true);
-            }
-          };
-          this.serverProcess.on("exit", onExit);
-          setTimeout(() => {
-            if (!finished) {
-              finished = true;
-              resolve(false);
-            }
-          }, 5000);
-        });
-
-        if (!exited) {
-          try {
-            this.serverProcess.kill("SIGKILL");
-          } catch (e) {}
-        }
-      } catch (err) {
-        // ignore
-      }
-
-      // give Node a moment to let handles close
-      await new Promise((r) => setTimeout(r, 50));
+      this.serverProcess.kill();
+      await new Promise((resolve) => {
+        this.serverProcess.on("exit", resolve);
+      });
     }
   }
 }
