@@ -16,20 +16,20 @@ void handleCommand(const std::vector<std::string> &parts, int client_fd) {
   std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::toupper);
 
   if (cmd == "SET") {
-    handle_set_command(parts, client_fd);
+    handleSetCommand(parts, client_fd);
   } else if (cmd == "GET") {
-    handle_get_command(parts, client_fd);
+    handleGetCommand(parts, client_fd);
   } else if (cmd == "ECHO") {
-    handle_echo_command(parts, client_fd);
+    handleEchoCommand(parts, client_fd);
   } else if (cmd == "PING") {
-    handle_ping_command(client_fd);
+    handlePingCommand(client_fd);
   } else {
     std::string resp = "-ERR unknown command '" + parts[0] + "'\r\n";
     send(client_fd, resp.c_str(), resp.size(), 0);
   }
 }
 
-void handle_set_command(const std::vector<std::string> &parts, int client_fd) {
+void handleSetCommand(const std::vector<std::string> &parts, int client_fd) {
   if (parts.size() < 3) {
     std::string resp = "-ERR wrong number of arguments for 'set' command\r\n";
     send(client_fd, resp.c_str(), resp.size(), 0);
@@ -49,10 +49,11 @@ void handle_set_command(const std::vector<std::string> &parts, int client_fd) {
       try {
         long long ms = std::stoll(parts[4]);
         store_value.has_expiry = true;
-        store_value.expiry_time = std::chrono::steady_clock::now() +
-                                  std::chrono::milliseconds(ms);
+        store_value.expiry_time =
+            std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
       } catch (const std::exception &e) {
-        std::cerr << "Expiry time value out of range: " << e.what() << std::endl;
+        std::cerr << "Expiry time value out of range: " << e.what()
+                  << std::endl;
         std::string resp = "-ERR invalid expire time\r\n";
         send(client_fd, resp.c_str(), resp.size(), 0);
         return;
@@ -70,7 +71,7 @@ void handle_set_command(const std::vector<std::string> &parts, int client_fd) {
   send(client_fd, resp.c_str(), resp.size(), 0);
 }
 
-void handle_get_command(const std::vector<std::string> &parts, int client_fd) {
+void handleGetCommand(const std::vector<std::string> &parts, int client_fd) {
   if (parts.size() < 2) {
     std::string resp = "-ERR wrong number of arguments for 'get' command\r\n";
     send(client_fd, resp.c_str(), resp.size(), 0);
@@ -87,7 +88,7 @@ void handle_get_command(const std::vector<std::string> &parts, int client_fd) {
   if (it != store.end()) {
     // Key exists, now check for expiry
     StoreValue &store_value = it->second;
-    
+
     if (store_value.is_expired()) {
       store.erase(it);
       resp = encodeNullBulkString();
@@ -101,7 +102,7 @@ void handle_get_command(const std::vector<std::string> &parts, int client_fd) {
   send(client_fd, resp.c_str(), resp.size(), 0);
 }
 
-void handle_echo_command(const std::vector<std::string> &parts, int client_fd) {
+void handleEchoCommand(const std::vector<std::string> &parts, int client_fd) {
   if (parts.size() < 2) {
     std::string resp = "-ERR wrong number of arguments for 'echo' command\r\n";
     send(client_fd, resp.c_str(), resp.size(), 0);
@@ -112,7 +113,7 @@ void handle_echo_command(const std::vector<std::string> &parts, int client_fd) {
   send(client_fd, resp.c_str(), resp.size(), 0);
 }
 
-void handle_ping_command(int client_fd) {
+void handlePingCommand(int client_fd) {
   std::string resp = encodeSimpleString("PONG");
   send(client_fd, resp.c_str(), resp.size(), 0);
 }
