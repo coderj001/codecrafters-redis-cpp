@@ -14,8 +14,9 @@ void handleClient(int client_fd) {
   std::cout << "Client connected on thread " << std::this_thread::get_id()
             << std::endl;
 
-  char buffer[1024];
+  std::mutex input_mutex;
   std::string input;
+  char buffer[1024];
 
   while (true) {
     ssize_t bytes_received = read(client_fd, buffer, sizeof(buffer));
@@ -26,32 +27,38 @@ void handleClient(int client_fd) {
       break;
     }
 
+    std::lock_guard<std::mutex> lock(input_mutex);
     input.append(buffer, bytes_received);
 
     while (!input.empty()) {
-      RESPParser parser(input);
-      auto root = parser.parser();
-      if (!root) {
-        break;
-      }
-
-      auto arr = std::dynamic_pointer_cast<Arrays>(root);
-      if (!arr) {
-        std::cerr << "Expected RESP Array\n";
-        break;
-      }
-
-      std::vector<std::string> parts;
-      for (auto &val : arr->values) {
-        auto bulk = std::dynamic_pointer_cast<BulkStrings>(val);
-        if (bulk) {
-          parts.push_back(bulk->value);
+      try {
+        RESPParser parser(input);
+        auto root = parser.parser();
+        if (!root) {
+          break;
         }
+
+        auto arr = std::dynamic_pointer_cast<Arrays>(root);
+        if (!arr) {
+          std::cerr << "Expected RESP Array\n";
+          break;
+        }
+
+        std::vector<std::string> parts;
+        for (auto &val : arr->values) {
+          auto bulk = std::dynamic_pointer_cast<BulkStrings>(val);
+          if (bulk) {
+            parts.push_back(bulk->value);
+          }
+        }
+
+        handleCommand(parts, client_fd);
+
+        input.erase(0, parser.bytesConsumed());
+      } catch (const std::exception &e) {
+        std::cerr << "Parsing error: " << e.what() << "\n";
+        break;
       }
-
-      handleCommand(parts, client_fd);
-
-      input.erase(0, parser.bytesConsumed());
     }
   }
 
