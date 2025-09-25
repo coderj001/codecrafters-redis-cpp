@@ -5,6 +5,9 @@
 #include <string>
 #include <vector>
 
+/**
+ * TokenType: Types RESP token
+ */
 enum TokenType {
   STRING,
   INTEGER,
@@ -25,11 +28,21 @@ struct Token {
       : type(t), value(v), length(l) {}
 };
 
+/**
+ * Tokenizes a RESP input string into tokens.
+ */
 std::vector<Token> tokenizer(const std::string &input);
 
 class RESPParser {
 public:
   explicit RESPParser(const std::string &string);
+
+  // Non-copyable, moveable
+  RESPParser(const RESPParser &) = delete;
+  RESPParser &operator=(const RESPParser &) = delete;
+  RESPParser(RESPParser &&) = default;
+  RESPParser &operator=(RESPParser &&) = default;
+
   std::shared_ptr<RESPDataType> parser();
   size_t bytesConsumed() const;
 
@@ -45,6 +58,9 @@ private:
   size_t getConsumedBytes() const;
 };
 
+/**
+ * RESP encoding helpers
+ */
 std::string encodeSimpleString(const std::string &s);
 std::string encodeBulkString(const std::string &s);
 std::string encodeNullBulkString();
