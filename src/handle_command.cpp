@@ -19,6 +19,8 @@ void handleCommand(const std::vector<std::string> &parts, int client_fd) {
     handleSetCommand(parts, client_fd);
   } else if (cmd == "GET") {
     handleGetCommand(parts, client_fd);
+  } else if (cmd == "RPUSH") {
+    handlePpushCommand(parts, client_fd);
   } else if (cmd == "ECHO") {
     handleEchoCommand(parts, client_fd);
   } else if (cmd == "PING") {
@@ -116,4 +118,8 @@ void handleEchoCommand(const std::vector<std::string> &parts, int client_fd) {
 void handlePingCommand(int client_fd) {
   std::string resp = encodeSimpleString("PONG");
   send(client_fd, resp.c_str(), resp.size(), 0);
+}
+
+
+void handlePpushCommand(const std::vector<std::string> &parts, int client_fd){
 }

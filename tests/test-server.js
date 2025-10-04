@@ -11,7 +11,7 @@ class RedisServerTester {
 
   async startServer() {
     // Spawn the built server binary directly (avoid relying on your_program.sh output)
-    const serverBinary = path.join(__dirname, "..", "build", "server");
+    const serverBinary = path.join(__dirname, "..", "build", "redis-server");
 
     return new Promise((resolve, reject) => {
       try {

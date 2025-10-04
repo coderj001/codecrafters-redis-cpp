@@ -19,5 +19,7 @@ echo "Building in Debug mode..."
   cmake --build ./build
 )
 
-echo "Debug build complete. Binary: ./build/server"
-echo "To debug: gdb ./build/server"
+echo "Debug build complete. Binary: ./build/redis-server"
+echo "To debug: gdb ./build/redis-server"
+
+

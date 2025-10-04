@@ -1,19 +1,48 @@
 #include "./include/handle_command.h"
 #include "./include/resp_parser.h"
 
+// Provides definitions for internet operations, like converting between host and
+// network byte order (e.g., htons).
 #include <arpa/inet.h>
+// C standard library. Provides general utilities like program termination
+// (e.g., EXIT_SUCCESS).
 #include <cstdlib>
+// C++ standard library for input/output streams (e.g., std::cout, std::cerr).
 #include <iostream>
+// Part of the C++ I/O library, provides ostream and related functionality like
+// std::unitbuf.
 #include <ostream>
+// Core Berkeley sockets API. Defines functions like socket(), bind(), listen(),
+// and accept() for network communication.
 #include <sys/socket.h>
+// Defines various data types used in system calls, often required by other
+// system headers like <sys/socket.h>.
 #include <sys/types.h>
+// C++ standard library for creating and managing threads (e.g., std::thread).
 #include <thread>
+// POSIX standard header. Provides access to the OS API, including functions
+// like read(), write(), and close().
 #include <unistd.h>
 
 void handleClient(int client_fd) {
+  // This function is executed by a new thread for each client connection.
+  // The `main` function creates a `std::thread` and runs this function on it.
+  // This allows the server to handle multiple clients concurrently.
+  // `std::this_thread::get_id()` returns the unique ID of the current thread.
   std::cout << "Client connected on thread " << std::this_thread::get_id()
             << std::endl;
 
+  // A mutex (mutual exclusion) is a lock used to protect shared data.
+  // When multiple threads need to access the same data, a mutex ensures
+  // that only one thread can access it at a time, preventing "race conditions"
+  // where threads might corrupt the data by modifying it simultaneously.
+  //
+  // IMPORTANT NOTE: In this specific code, `input_mutex` and the `input` string
+  // are local variables. Each thread gets its own separate copy. Therefore,
+  // this mutex is not actually protecting any data shared between threads.
+  // It's effectively redundant here, but serves as an example of how you
+  // *would* declare a mutex. A real use case would involve a mutex that is
+  // shared (e.g., global or passed by reference) among multiple threads.
   std::mutex input_mutex;
   std::string input;
   char buffer[1024];
@@ -24,17 +53,28 @@ void handleClient(int client_fd) {
       if (bytes_received < 0) {
         std::cerr << "Failed to read\n";
       }
-      break;
+      break; // Client disconnected or error occurred.
     }
 
-    std::lock_guard<std::mutex> lock(input_mutex);
-    input.append(buffer, bytes_received);
+    // `std::lock_guard` is a helper class that automatically manages a mutex.
+    // When `lock` is created, it calls `input_mutex.lock()`, acquiring the lock.
+    // This means any other thread trying to lock the same mutex will have to wait.
+    // The block of code that follows is the "critical section".
+    {
+      std::lock_guard<std::mutex> lock(input_mutex);
+      input.append(buffer, bytes_received);
+    } // The lock is automatically released here when `lock` goes out of scope.
+      // This RAII (Resource Acquisition Is Initialization) pattern is the
+      // recommended way to handle mutexes, as it guarantees the lock is
+      // released even if an exception occurs.
 
+    // This inner loop processes the accumulated data from the `input` buffer.
     while (!input.empty()) {
       try {
         RESPParser parser(input);
         auto root = parser.parser();
         if (!root) {
+          // Not enough data to parse a full command, wait for more.
           break;
         }
 
@@ -52,16 +92,21 @@ void handleClient(int client_fd) {
           }
         }
 
+        // This function likely processes the command. If it accesses a shared
+        // resource (like a global key-value store), it must use its own
+        // mutexes internally to ensure thread safety.
         handleCommand(parts, client_fd);
 
+        // Remove the processed command from the input buffer.
         input.erase(0, parser.bytesConsumed());
       } catch (const std::exception &e) {
         std::cerr << "Parsing error: " << e.what() << "\n";
-        break;
+        break; // Stop processing on error.
       }
     }
   }
 
+  // Clean up by closing the client's socket connection.
   close(client_fd);
 }
 
