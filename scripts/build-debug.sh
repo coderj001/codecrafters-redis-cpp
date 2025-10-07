@@ -21,5 +21,3 @@ echo "Building in Debug mode..."
 
 echo "Debug build complete. Binary: ./build/redis-server"
 echo "To debug: gdb ./build/redis-server"
-
-

@@ -4,6 +4,11 @@ project(redis-starter-cpp)
 
 file(GLOB SOURCE_FILES src/*.cpp)
 
+file(GLOB LIB_SOURCE_FILES src/handle_command.cpp src/kv_store.cpp src/resp_parser.cpp)
+
+add_library(redis-lib ${LIB_SOURCE_FILES})
+
+
 set(CMAKE_CXX_STANDARD 23) # Enable the C++23 standard
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 
@@ -20,10 +25,9 @@ find_package(Threads REQUIRED)
 find_package(asio CONFIG REQUIRED)
 find_package(GTest REQUIRED)
 
-add_executable(redis-server ${SOURCE_FILES})
+add_executable(redis-server src/Server.cpp)
 
-target_link_libraries(redis-server PRIVATE asio asio::asio)
-target_link_libraries(redis-server PRIVATE Threads::Threads)
+target_link_libraries(redis-server PRIVATE redis-lib asio::asio Threads::Threads)
 
 # Add compile options for better debugging
 target_compile_options(redis-server PRIVATE
@@ -31,9 +35,10 @@ target_compile_options(redis-server PRIVATE
 )
 
 # Unit tests
-file(GLOB_RECURSE TEST_FILES src/tests/*.cpp)
+file(GLOB TEST_FILES src/tests/*.cpp)
 add_executable(unit_tests ${TEST_FILES})
-target_link_libraries(unit_tests PRIVATE GTest::gtest_main)
+target_link_libraries(unit_tests PRIVATE GTest::gtest_main redis-lib)
 
 enable_testing()
 add_test(NAME StoreValueTest COMMAND unit_tests)
+add_test(NAME KvStoreTest COMMAND unit_tests)
