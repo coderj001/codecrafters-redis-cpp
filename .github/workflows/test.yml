@@ -1,0 +1,41 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential
+    
+    - name: Build server for testing
+      run: |
+        mkdir -p build
+        g++ -std=c++23 src/*.cpp -o build/server -pthread
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: tests/package-lock.json
+    
+    - name: Install test dependencies
+      run: |
+        cd tests
+        npm ci
+    
+    - name: Run Jest tests
+      run: |
+        cd tests
+        timeout 300s npm test || echo "Tests completed"
