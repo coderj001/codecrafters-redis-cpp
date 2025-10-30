@@ -24,7 +24,7 @@
 // like read(), write(), and close().
 #include <unistd.h>
 
-void handleClient(int client_fd) {
+void handle_client_connection(int client_fd) {
   // This function is executed by a new thread for each client connection.
   // The `main` function creates a `std::thread` and runs this function on it.
   // This allows the server to handle multiple clients concurrently.
@@ -37,20 +37,20 @@ void handleClient(int client_fd) {
   // that only one thread can access it at a time, preventing "race conditions"
   // where threads might corrupt the data by modifying it simultaneously.
   //
-  // IMPORTANT NOTE: In this specific code, `input_mutex` and the `input` string
+  // IMPORTANT NOTE: In this specific code, `input_mutex` and the `accumulated_input_buffer` string
   // are local variables. Each thread gets its own separate copy. Therefore,
   // this mutex is not actually protecting any data shared between threads.
   // It's effectively redundant here, but serves as an example of how you
   // *would* declare a mutex. A real use case would involve a mutex that is
   // shared (e.g., global or passed by reference) among multiple threads.
   std::mutex input_mutex;
-  std::string input;
-  char buffer[1024];
+  std::string accumulated_input_buffer;
+  char receive_buffer[1024];
 
   while (true) {
-    ssize_t bytes_received = read(client_fd, buffer, sizeof(buffer));
-    if (bytes_received <= 0) {
-      if (bytes_received < 0) {
+    ssize_t received_byte_count = read(client_fd, receive_buffer, sizeof(receive_buffer));
+    if (received_byte_count <= 0) {
+      if (received_byte_count < 0) {
         std::cerr << "Failed to read\n";
       }
       break; // Client disconnected or error occurred.
@@ -62,43 +62,43 @@ void handleClient(int client_fd) {
     // The block of code that follows is the "critical section".
     {
       std::lock_guard<std::mutex> lock(input_mutex);
-      input.append(buffer, bytes_received);
+      accumulated_input_buffer.append(receive_buffer, received_byte_count);
     } // The lock is automatically released here when `lock` goes out of scope.
       // This RAII (Resource Acquisition Is Initialization) pattern is the
       // recommended way to handle mutexes, as it guarantees the lock is
       // released even if an exception occurs.
 
-    // This inner loop processes the accumulated data from the `input` buffer.
-    while (!input.empty()) {
+    // This inner loop processes the accumulated data from the `accumulated_input_buffer` buffer.
+    while (!accumulated_input_buffer.empty()) {
       try {
-        RESPParser parser(input);
-        auto root = parser.parser();
-        if (!root) {
+        RESPParser parser(accumulated_input_buffer);
+        auto parsed_resp_data = parser.parse();
+        if (!parsed_resp_data) {
           // Not enough data to parse a full command, wait for more.
           break;
         }
 
-        auto arr = std::dynamic_pointer_cast<Arrays>(root);
-        if (!arr) {
+        auto resp_array = std::dynamic_pointer_cast<Arrays>(parsed_resp_data);
+        if (!resp_array) {
           std::cerr << "Expected RESP Array\n";
           break;
         }
 
-        std::vector<std::string> parts;
-        for (auto &val : arr->values) {
-          auto bulk = std::dynamic_pointer_cast<BulkStrings>(val);
-          if (bulk) {
-            parts.push_back(bulk->value);
+        std::vector<std::string> command_parts;
+        for (auto &array_element : resp_array->values) {
+          auto bulk_string_element = std::dynamic_pointer_cast<BulkStrings>(array_element);
+          if (bulk_string_element) {
+            command_parts.push_back(bulk_string_element->value);
           }
         }
 
         // This function likely processes the command. If it accesses a shared
         // resource (like a global key-value store), it must use its own
         // mutexes internally to ensure thread safety.
-        handleCommand(parts, client_fd);
+        handleCommand(command_parts, client_fd);
 
         // Remove the processed command from the input buffer.
-        input.erase(0, parser.bytesConsumed());
+        accumulated_input_buffer.erase(0, parser.bytesConsumed());
       } catch (const std::exception &e) {
         std::cerr << "Parsing error: " << e.what() << "\n";
         break; // Stop processing on error.
@@ -154,7 +154,7 @@ int main(int argc, char **argv) {
       std::cerr << "Failed to accept client connection\n";
     }
 
-    std::thread client_thread(handleClient, client_fd);
+    std::thread client_thread(handle_client_connection, client_fd);
     client_thread.detach();
   }
 

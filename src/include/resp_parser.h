@@ -24,8 +24,8 @@ struct Token {
   std::string value;
   size_t length;
 
-  Token(TokenType t, const std::string &v, size_t l)
-      : type(t), value(v), length(l) {}
+  Token(TokenType token_type, const std::string &token_value, size_t token_length)
+      : type(token_type), value(token_value), length(token_length) {}
 };
 
 /**
@@ -43,25 +43,25 @@ public:
   RESPParser(RESPParser &&) = default;
   RESPParser &operator=(RESPParser &&) = default;
 
-  std::shared_ptr<RESPDataType> parser();
+  std::shared_ptr<RESPDataType> parse();
   size_t bytesConsumed() const;
 
 private:
   std::vector<Token> tokens;
-  size_t pos;
+  size_t current_position;
 
   bool hasMore();
   Token &nextToken();
   Token &currentToken();
   std::shared_ptr<Arrays> parseArray();
-  std::shared_ptr<RESPDataType> parserValue();
+  std::shared_ptr<RESPDataType> parse_value();
   size_t getConsumedBytes() const;
 };
 
 /**
  * RESP encoding helpers
  */
-std::string encodeSimpleString(const std::string &s);
-std::string encodeBulkString(const std::string &s);
+std::string encodeSimpleString(const std::string &input_string);
+std::string encodeBulkString(const std::string &input_string);
 std::string encodeNullBulkString();
-std::string encodeErrorString(const std::string &err);
+std::string encodeErrorString(const std::string &error_message);

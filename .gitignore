@@ -48,4 +48,5 @@ _deps
 build/
 vcpkg_installed
 
-node_modules/
+node_modules/_codeql_detected_source_root
+tests/node_modules/
