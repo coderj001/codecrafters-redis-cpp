@@ -4,7 +4,7 @@
   "description": "End-to-end tests for Redis server using JavaScript and redis-cli",
   "main": "test-server.js",
   "scripts": {
-    "test": "jest --runInBand",
+    "test": "jest --runInBand --detectOpenHandles",
     "test:cli": "jest tests/cli.e2e.test.js --runInBand",
     "test:all": "npm run test && npm run test:cli",
     "test:watch": "nodemon --exec \"npm run test:all\"",

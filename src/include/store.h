@@ -3,27 +3,22 @@
 #include <chrono>
 #include <string>
 
-union Data {
-  std::string s_data;
-};
-
 /**
  * StoreValue: Represents a value stored in Redis with optional expiry.
  */
 struct StoreValue {
   std::string value;
-  // Data data;
-  std::chrono::steady_clock::time_point expiry_time{};
-  bool has_expiry = false;
+  std::chrono::steady_clock::time_point expiry_time;
+  bool has_expiry;
 
-  /**
-   * Checks if the value has expired.
-   * @return true if expired, false otherwise.
-   */
+  StoreValue(std::string val) : value(std::move(val)), has_expiry(false) {}
+
+  void set_expiry(long long expiry_ms) {
+    has_expiry = true;
+    expiry_time = std::chrono::steady_clock::now() + std::chrono::milliseconds(expiry_ms);
+  }
+
   bool is_expired() const {
-    if (!has_expiry) {
-      return false;
-    }
-    return std::chrono::steady_clock::now() > expiry_time;
+    return has_expiry && std::chrono::steady_clock::now() > expiry_time;
   }
 };
